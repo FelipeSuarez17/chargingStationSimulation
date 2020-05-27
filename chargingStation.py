@@ -12,7 +12,7 @@ NBSS = 5  # Max number of chargers
 Wmax = 7  # Max waiting time for EV
 Bth = 40  # Accepted minimum charge level
 BthHighDemand = 30
-deltaHighDemand = 20
+deltaHighDemand = 60
 lossesHighDemand = 2
 chargingRate = 20  # charging rate per hour
 prices = pd.read_csv('Data/electricity_prices.csv')  # Prices dataframe
@@ -36,10 +36,11 @@ class Measure:
 class Battery:
     def __init__(self, arrival_time, charger, Bth=40, inStation=False):
         self.arrival_time = arrival_time
+        self.bth = Bth
         if inStation:
             self.level = batLevel(35, 5)
-            self.estimateAvailable = self.arrival_time + (Bth - self.level) * 60 / chargingRate  # estimated waiting time for next available battery
-            FES.put((self.estimateAvailable, "batteryAvailable"))
+            self.estimateAvailable = self.arrival_time + ((Bth - self.level) * 60 / chargingRate)  # estimated waiting time for next available battery
+            FES.put((self.estimateAvailable, "batteryAvailable", charger))
         else:
             self.level = batLevel(10, 5)
         self.charger = charger
@@ -83,7 +84,7 @@ def arrival(time, FES, waitingLine):
     else:
         Bth = 40
     inter_arrival = getNextArrival(time, True)  # get inter_arrival time, True for fixed time
-    FES.put((time + inter_arrival, "arrival"))  # schedule the next arrival
+    FES.put((time + inter_arrival, "arrival", -1))  # schedule the next arrival
 
     updateBatteriesLevel(time, data.oldT)  # updated each battery level in chargers(in station) and update cost
 
@@ -106,7 +107,7 @@ def arrival(time, FES, waitingLine):
                     oldBatteryEV.charger = i
                     oldBatteryEV.estimateAvailable = time + (Bth - oldBatteryEV.level) * 60 / chargingRate
                     chargers.chargers[i] = oldBatteryEV  # replace battery in charger
-                    FES.put((oldBatteryEV.estimateAvailable, "batteryAvailable"))
+                    FES.put((oldBatteryEV.estimateAvailable, "batteryAvailable", i))
         else:
             data.loss.append(time)
     else:  # loss
@@ -130,7 +131,7 @@ def updateBatteriesLevel(time, oldT):  # update batteries level and cost
                     data.cost += ((pair[0]) / (time - oldT)) * deltaCharge * pair[1]  # adding the cost of the fraction of time according to listCosts
 
 
-def batteryAvailable(time, FES, waitingLine):  # departure
+def batteryAvailable(time, FES, waitingLine, charger):  # departure
     global Bth
     updateBatteriesLevel(time, data.oldT)  # updated each battery level in chargers(in station) and update cost
     data.ut += len(waitingLine) * (time - data.oldT)
@@ -142,14 +143,11 @@ def batteryAvailable(time, FES, waitingLine):  # departure
     if len(waitingLine) != 0:
         data.dep += 1
         oldBatteryEV = waitingLine.pop(0)  # take battery from car
-
-        for i in range(len(chargers.chargers)):
-            if chargers.chargers[i].level >= Bth:
-                # newBatteryEV = chargers.chargers[i]
-                oldBatteryEV.charger = i
-                oldBatteryEV.estimateAvailable = time + (Bth - oldBatteryEV.level) * 60 / chargingRate
-                chargers.chargers[i] = oldBatteryEV  # replace battery in charger
-                FES.put((oldBatteryEV.estimateAvailable, "batteryAvailable"))
+        # newBatteryEV = chargers.chargers[i]
+        oldBatteryEV.charger = charger
+        oldBatteryEV.estimateAvailable = time + (Bth - oldBatteryEV.level) * 60 / chargingRate
+        chargers.chargers[charger] = oldBatteryEV  # replace battery in charger
+        FES.put((oldBatteryEV.estimateAvailable, "batteryAvailable", charger))
     data.oldT = time
 
 
@@ -205,15 +203,20 @@ if __name__ == '__main__':
     waitingLine = []
     data = Measure()
     FES = PriorityQueue()  # list of events
-    FES.put((0, "arrival"))  # schedule first arrival at t=0
+    FES.put((0, "arrival", -1))  # schedule first arrival at t=0
     chargers = Charger(NBSS)
     while time < SIM_TIME:
-        (time, event_type) = FES.get()
+        (time, event_type, charger) = FES.get()
 
         if event_type == "arrival":
             arrival(time, FES, waitingLine)
 
         elif event_type == "batteryAvailable":
-            batteryAvailable(time, FES, waitingLine)
+            batteryAvailable(time, FES, waitingLine, charger)
+
+
+print(f"Number of arrivals: {data.arr}")
+print(f"Number of departures: {data.dep}")
+print(f"Number of losses: {len(data.loss)}")
 
 # TODO all
