@@ -11,15 +11,13 @@ C = 40  # Max battery capacity
 NBSS = 5  # Max number of chargers
 Wmax = 7  # Max waiting time for EV
 Bth = 40  # Accepted minimum charge level
-BthHighDemand = 38  # TODO check negative difference in distro
+BthHighDemand = 10
 deltaHighDemand = 60
 lossesHighDemand = 2
 chargingRate = 20  # charging rate per hour
 prices = pd.read_csv('Data/electricity_prices.csv')  # Prices dataframe
 day = 1
 month = 1
-
-
 
 
 class Measure:
@@ -37,11 +35,12 @@ class Battery:
         self.arrival_time = arrival_time
         self.bth = Bth
         if inStation:
-            self.level = batLevel(35, 5)
+            # self.level = batLevel(35, 5)
+            self.level = 0
             self.estimateAvailable = self.arrival_time + ((Bth - self.level) * 60 / chargingRate)  # estimated waiting time for next available battery
             FES.put((self.estimateAvailable, "batteryAvailable", charger))
         else:
-            self.level = batLevel(10, 5)
+            self.level = batLevel(Bth / 4, 5)
         self.charger = charger
 
 
@@ -53,8 +52,9 @@ class Charger:
 
 
 def batLevel(mean, std):  # generate random initial charge level
+    global Bth
     level = np.random.normal(mean, std)
-    if 0 < level < 40:
+    if 0 < level < Bth:
         return level
     else:
         return batLevel(mean, std)
@@ -163,6 +163,8 @@ def getCosts(time, oldT):  # return eur/kWh
         cost.append((60 - (oldT % 60), iterCost))
         iterHour += 1
         while iterHour != int(time / 60):
+            if iterHour == 24:
+                iterHour = 0
             iterCost = prices[(prices['Hour'] == iterHour) & (prices['Season'] == season)].iloc[0]['Cost'] / 1000
             cost.append((60, iterCost))
             iterHour += 1
@@ -190,9 +192,22 @@ def getSeason():
 def getLosses(lossses_list, time, delta):
     count = 0
     for i in lossses_list:
-        if time-delta < i < time:
+        if time - delta < i < time:
             count += 1
     return count
+
+
+def plotCDF(data, xlabel, ylabel, name):
+    data_sorted = np.sort(data)
+    p = 1. * np.arange(len(data)) / (len(data) - 1)
+    plt.plot(data_sorted, p)
+    plt.grid()
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.xlim([min(data) - 1, max(data)])
+    # plt.savefig(name)
+    plt.show()
+
 
 if __name__ == '__main__':
     random.seed(42)
@@ -206,6 +221,7 @@ if __name__ == '__main__':
     chargers = Charger(NBSS)
     while time < SIM_TIME:
         (time, event_type, charger) = FES.get()
+        # print(time)
 
         if event_type == "arrival":
             arrival(time, FES, waitingLine)
@@ -213,9 +229,8 @@ if __name__ == '__main__':
         elif event_type == "batteryAvailable":
             batteryAvailable(time, FES, waitingLine, charger)
 
-
 print(f"Number of arrivals: {data.arr}")
 print(f"Number of departures: {data.dep}")
 print(f"Number of losses: {len(data.loss)}")
-
+plotCDF(data.loss, "", "", "test.pdf")
 # TODO all
