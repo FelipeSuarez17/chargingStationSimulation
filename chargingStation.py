@@ -11,7 +11,7 @@ C = 40  # Max battery capacity
 NBSS = 5  # Max number of chargers
 Wmax = 7  # Max waiting time for EV
 Bth = 40  # Accepted minimum charge level
-BthHighDemand = 30
+BthHighDemand = 38  # TODO check negative difference in distro
 deltaHighDemand = 60
 lossesHighDemand = 2
 chargingRate = 20  # charging rate per hour
@@ -20,7 +20,7 @@ day = 1
 month = 1
 
 
-# TODO add season prices
+
 
 class Measure:
     def __init__(self):
@@ -30,7 +30,6 @@ class Measure:
         self.oldT = 0
         self.loss = []
         self.cost = 0
-        # TODO compute average users in the queue
 
 
 class Battery:
