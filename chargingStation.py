@@ -3,6 +3,7 @@ import json
 from queue import Queue, PriorityQueue
 import numpy as np
 import seaborn as sns
+from scipy.stats import t
 import matplotlib.pyplot as plt
 import pandas as pd
 from datetime import datetime, timedelta
@@ -28,6 +29,8 @@ class Measure:
         self.oldT = 0
         self.loss = []
         self.cost = 0
+        self.waitingTime = []
+        self.chargingTime = []
 
 
 class Battery:
@@ -102,8 +105,10 @@ def arrival(time, FES, waitingLine):
             data.dep += 1
             oldBatteryEV = Battery(arrival_time=time, charger=-1, Bth=Bth)
             for i in range(len(chargers.chargers)):
-                if chargers.chargers[i].estimateAvailable == estimatedWaitings[len(waitingLine)]:
+                if chargers.chargers[i].estimateAvailable == estimatedWaitings[len(waitingLine)]:  # More than 1 battery charged, serve with equal available time
                     oldBatteryEV.charger = i
+                    data.waitingTime.append(0)  # The car does not wait for the charged battery
+                    data.chargingTime.append(time-chargers.chargers[i].arrival_time)  # Compute charging battery time
                     oldBatteryEV.estimateAvailable = time + (Bth - oldBatteryEV.level) * 60 / chargingRate
                     chargers.chargers[i] = oldBatteryEV  # replace battery in charger
                     FES.put((oldBatteryEV.estimateAvailable, "batteryAvailable", i))
@@ -142,8 +147,11 @@ def batteryAvailable(time, FES, waitingLine, charger):  # departure
     if len(waitingLine) != 0:
         data.dep += 1
         oldBatteryEV = waitingLine.pop(0)  # take battery from car
+        data.waitingTime.append(time-oldBatteryEV.arrival_time)  # To estimate the individual waiting time
+        data.chargingTime.append(time-chargers.chargers[charger].arrival_time)  # To estimate the charging battery time
         # newBatteryEV = chargers.chargers[i]
         oldBatteryEV.charger = charger
+        oldBatteryEV.arrival_time = time
         oldBatteryEV.estimateAvailable = time + (Bth - oldBatteryEV.level) * 60 / chargingRate
         chargers.chargers[charger] = oldBatteryEV  # replace battery in charger
         FES.put((oldBatteryEV.estimateAvailable, "batteryAvailable", charger))
