@@ -12,7 +12,7 @@ C = 40  # Max battery capacity
 NBSS = 5  # Max number of chargers
 Wmax = 7  # Max waiting time for EV
 Bth = 40  # Accepted minimum charge level
-BthHighDemand = 40
+BthHighDemand = 20
 deltaHighDemand = 60
 lossesHighDemand = 2
 chargingRate = 20  # charging rate per hour
@@ -38,12 +38,13 @@ class Battery:
         self.arrival_time = arrival_time
         self.bth = Bth
         if inStation:
-            self.level = batLevel(0, 2)
-            # self.level = batLevel(35, 5)
+            # self.level = batLevel(0, 2)
+            # TODO implement k method to remove warm-up
+            self.level = batLevel(35, 5)
             self.estimateAvailable = self.arrival_time + ((Bth - self.level) * 60 / chargingRate)  # estimated waiting time for next available battery
             FES.put((self.estimateAvailable, "batteryAvailable", charger))
         else:
-            self.level = batLevel(Bth / 4, 5)
+            self.level = batLevel(Bth / 4, 1)
         self.charger = charger
 
 
@@ -115,8 +116,10 @@ def arrival(time, FES, waitingLine):
                     FES.put((oldBatteryEV.estimateAvailable, "batteryAvailable", i))
         else:
             data.loss.append(time)
+            data.waitingTime.append(7)
     else:  # loss
         data.loss.append(time)
+        data.waitingTime.append(7)
 
     data.oldT = time
 
@@ -237,7 +240,7 @@ if __name__ == '__main__':
 
         elif event_type == "batteryAvailable":
             batteryAvailable(time, FES, waitingLine, charger)
-    data.waitingTime = data.waitingTime + [Wmax for i in range(len(data.loss))]  # Add the waiting time of losses
+    # data.waitingTime = data.waitingTime + [Wmax for i in range(len(data.loss))]  # Add the waiting time of losses
     confidence_int_wait = t.interval(0.999, len(data.waitingTime)-1, np.mean(data.waitingTime), sem(data.waitingTime))
     confidence_int_charge = t.interval(0.999, len(data.chargingTime) - 1, np.mean(data.chargingTime), sem(data.chargingTime))
     print(f"Confidence interval Waiting Time: {confidence_int_wait}")
@@ -246,4 +249,4 @@ if __name__ == '__main__':
     print(f"Number of departures: {data.dep}")
     print(f"Number of losses: {len(data.loss)}")
     plotCDF(data.loss, "", "", "test.pdf")
-    # TODO all
+    # TODO include PV
