@@ -12,13 +12,18 @@ C = 40  # Max battery capacity
 NBSS = 5  # Max number of chargers
 Wmax = 7  # Max waiting time for EV
 Bth = 40  # Accepted minimum charge level
-BthHighDemand = 20
+BthHighDemand = 40
 deltaHighDemand = 60
 lossesHighDemand = 2
 chargingRate = 20  # charging rate per hour
+maxChargingRate = 20  # Fixed charging rate
+PV = 2  # Number of Photovoltaic Panels
+S_one_PV = 1  # Nominal Cap. of one PV (1kWp)
 prices = pd.read_csv('Data/electricity_prices.csv')  # Prices dataframe
+PV_production = pd.read_csv('Data/PVproduction_PanelSize1kWp.csv')  # Output PV power dataframe
 day = 1
 month = 1
+Spv = 0  # Nominal Cap. of the set of PV (kW), as we start at midnight the nom. cap. will always be 0
 
 
 class Measure:
@@ -125,6 +130,7 @@ def arrival(time, FES, waitingLine):
 
 
 def updateBatteriesLevel(time, oldT):  # update batteries level and cost
+    global chargingRate, Spv
     deltaCharge = (time - oldT) * chargingRate / 60
     listCosts = getCosts(time, oldT)
     for i in range(len(chargers.chargers)):
@@ -134,9 +140,10 @@ def updateBatteriesLevel(time, oldT):  # update batteries level and cost
         #     chargers.chargers[i].level = chargers.chargers[i].level + deltaCharge  # update battery level
         if chargers.chargers[i].level != C:
             chargers.chargers[i].level = chargers.chargers[i].level + deltaCharge  # update battery level
-            for pair in listCosts:
-                if (time - oldT) != 0:  # avoid zero division
-                    data.cost += ((pair[0]) / (time - oldT)) * deltaCharge * pair[1]  # adding the cost of the fraction of time according to listCosts
+            if Spv == 0:  # If Spv is equal to 0 it means we are using the power grid and we need to pay for that
+                for pair in listCosts:
+                    if (time - oldT) != 0:  # avoid zero division
+                        data.cost += ((pair[0]) / (time - oldT)) * deltaCharge * pair[1]  # adding the cost of the fraction of time according to listCosts
 
 
 def batteryAvailable(time, FES, waitingLine, charger):  # departure
@@ -159,6 +166,36 @@ def batteryAvailable(time, FES, waitingLine, charger):  # departure
         oldBatteryEV.estimateAvailable = time + (Bth - oldBatteryEV.level) * 60 / chargingRate
         chargers.chargers[charger] = oldBatteryEV  # replace battery in charger
         FES.put((oldBatteryEV.estimateAvailable, "batteryAvailable", charger))
+    data.oldT = time
+
+
+def updateEstimateAvailable(time):
+    for i in range(len(chargers.chargers)):
+        chargers.chargers[i].estimateAvailable = time + (Bth - chargers.chargers[i].level) * 60 / chargingRate
+        j = 0
+        while j < len(FES.queue):
+            if FES.queue[j][1] in 'batteryAvailable' and FES.queue[j][2] == i:
+                FES.queue.pop(j)
+            else:
+                j += 1
+        FES.put((chargers.chargers[i].estimateAvailable, 'batteryAvailable', i))
+        # TODO Check waiting line (remove if necessary)
+
+
+def chargingRate_change(time, FES):
+    global chargingRate, Spv
+    updateBatteriesLevel(time, data.oldT)  # updated each battery level in chargers (in station) and update cost
+    FES.put((time + 60, "chargingRate_change", -1))  # Check every hour
+    hour = int(time / 60)
+    PowerDayHour = PV_production[(PV_production['Month'] == month) & (PV_production['Day'] == day) & (PV_production['Hour'] == hour)]
+    OutPow = PowerDayHour.iloc[0][3]  # Retrieving output power according to day, month, and hour
+    Spv = S_one_PV * PV * OutPow  # Power of a set of panels in a given day, month, and hour (Wh)
+    if Spv == 0:  # If solar panels are not producing energy (night hours)
+        chargingRate = maxChargingRate
+    else:
+        chargingRate = (Spv/NBSS)/1000  # Over 1000 to convert it to kWh
+        # TODO if charging rate is more than 20 kWh limit that power
+    updateEstimateAvailable(time)
     data.oldT = time
 
 
@@ -230,18 +267,20 @@ if __name__ == '__main__':
     data = Measure()
     FES = PriorityQueue()  # list of events
     FES.put((0, "arrival", -1))  # schedule first arrival at t=0
+    FES.put((60, "chargingRate_change", -1))
     chargers = Charger(NBSS)
     while time < SIM_TIME:
         (time, event_type, charger) = FES.get()
-        # print(time)
 
         if event_type == "arrival":
             arrival(time, FES, waitingLine)
 
         elif event_type == "batteryAvailable":
             batteryAvailable(time, FES, waitingLine, charger)
-    # data.waitingTime = data.waitingTime + [Wmax for i in range(len(data.loss))]  # Add the waiting time of losses
-    confidence_int_wait = t.interval(0.999, len(data.waitingTime)-1, np.mean(data.waitingTime), sem(data.waitingTime))
+
+        elif event_type == "chargingRate_change":
+            chargingRate_change(time, FES)
+    confidence_int_wait = t.interval(0.999, len(data.waitingTime) - 1, np.mean(data.waitingTime), sem(data.waitingTime))
     confidence_int_charge = t.interval(0.999, len(data.chargingTime) - 1, np.mean(data.chargingTime), sem(data.chargingTime))
     print(f"Confidence interval Waiting Time: {confidence_int_wait}")
     print(f"Confidence interval Charging Time: {confidence_int_charge}")
