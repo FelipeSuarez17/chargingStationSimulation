@@ -17,7 +17,7 @@ deltaHighDemand = 60
 lossesHighDemand = 2
 chargingRate = 20  # charging rate per hour
 maxChargingRate = 20  # Fixed charging rate
-PV = 2  # Number of Photovoltaic Panels
+PV = 100  # Number of Photovoltaic Panels
 S_one_PV = 1  # Nominal Cap. of one PV (1kWp)
 prices = pd.read_csv('Data/electricity_prices.csv')  # Prices dataframe
 PV_production = pd.read_csv('Data/PVproduction_PanelSize1kWp.csv')  # Output PV power dataframe
@@ -176,10 +176,24 @@ def updateEstimateAvailable(time):
         while j < len(FES.queue):
             if FES.queue[j][1] in 'batteryAvailable' and FES.queue[j][2] == i:
                 FES.queue.pop(j)
+                break
             else:
                 j += 1
         FES.put((chargers.chargers[i].estimateAvailable, 'batteryAvailable', i))
-        # TODO Check waiting line (remove if necessary)
+        # TODO chargingRate graph depending the hour and compare it with the different seasons, daylight duration and chargingRate
+    # Check waiting line (remove if necessary)
+    estimatedWaitings = []
+    for i in range(len(chargers.chargers)):
+        estimatedWaitings.append(chargers.chargers[i].estimateAvailable)
+    estimatedWaitings = np.sort(estimatedWaitings)
+    i = 0
+    while i < len(waitingLine):
+        if waitingLine[i].arrival_time + Wmax <= estimatedWaitings[i]:  # If EV needs to wait more than the arrival time plus Wmax, the EV leaves and is added to losses
+            waitingLine.pop(i)
+            data.loss.append(time)
+            data.waitingTime.append(7)
+        else:
+            i += 1
 
 
 def chargingRate_change(time, FES):
@@ -194,7 +208,8 @@ def chargingRate_change(time, FES):
         chargingRate = maxChargingRate
     else:
         chargingRate = (Spv/NBSS)/1000  # Over 1000 to convert it to kWh
-        # TODO if charging rate is more than 20 kWh limit that power
+        if chargingRate > 20:  # if charging rate is more than 20 kWh limit that power
+            chargingRate = 20
     updateEstimateAvailable(time)
     data.oldT = time
 
@@ -269,6 +284,8 @@ if __name__ == '__main__':
     FES.put((0, "arrival", -1))  # schedule first arrival at t=0
     FES.put((60, "chargingRate_change", -1))
     chargers = Charger(NBSS)
+    listTime = []
+    listChargingRate = []
     while time < SIM_TIME:
         (time, event_type, charger) = FES.get()
 
@@ -280,6 +297,8 @@ if __name__ == '__main__':
 
         elif event_type == "chargingRate_change":
             chargingRate_change(time, FES)
+        listTime.append(time)
+        listChargingRate.append(chargingRate)
     confidence_int_wait = t.interval(0.999, len(data.waitingTime) - 1, np.mean(data.waitingTime), sem(data.waitingTime))
     confidence_int_charge = t.interval(0.999, len(data.chargingTime) - 1, np.mean(data.chargingTime), sem(data.chargingTime))
     print(f"Confidence interval Waiting Time: {confidence_int_wait}")
@@ -288,4 +307,3 @@ if __name__ == '__main__':
     print(f"Number of departures: {data.dep}")
     print(f"Number of losses: {len(data.loss)}")
     plotCDF(data.loss, "", "", "test.pdf")
-    # TODO include PV
