@@ -7,6 +7,7 @@ from scipy.stats import t, sem
 import matplotlib.pyplot as plt
 import pandas as pd
 from datetime import datetime, timedelta
+from tqdm import tqdm
 
 C = 40  # Max battery capacity
 NBSS = 5  # Max number of chargers
@@ -17,7 +18,7 @@ deltaHighDemand = 60
 lossesHighDemand = 2
 chargingRate = 20  # charging rate per hour
 maxChargingRate = 20  # Fixed charging rate
-PV = 100  # Number of Photovoltaic Panels
+PV = 0  # Number of Photovoltaic Panels
 S_one_PV = 1  # Nominal Cap. of one PV (1kWp)
 prices = pd.read_csv('Data/electricity_prices.csv')  # Prices dataframe
 PV_production = pd.read_csv('Data/PVproduction_PanelSize1kWp.csv')  # Output PV power dataframe
@@ -45,7 +46,8 @@ class Battery:
         if inStation:
             # self.level = batLevel(0, 2)
             # TODO implement k method to remove warm-up
-            self.level = batLevel(35, 5)
+            # TODO graph for different initial charging values the warm-up period
+            self.level = batLevel(10, 1)
             self.estimateAvailable = self.arrival_time + ((Bth - self.level) * 60 / chargingRate)  # estimated waiting time for next available battery
             FES.put((self.estimateAvailable, "batteryAvailable", charger))
         else:
@@ -286,6 +288,7 @@ if __name__ == '__main__':
     chargers = Charger(NBSS)
     listTime = []
     listChargingRate = []
+    pbar = tqdm(total=SIM_TIME)
     while time < SIM_TIME:
         (time, event_type, charger) = FES.get()
 
@@ -299,6 +302,7 @@ if __name__ == '__main__':
             chargingRate_change(time, FES)
         listTime.append(time)
         listChargingRate.append(chargingRate)
+        pbar.update(time)
     confidence_int_wait = t.interval(0.999, len(data.waitingTime) - 1, np.mean(data.waitingTime), sem(data.waitingTime))
     confidence_int_charge = t.interval(0.999, len(data.chargingTime) - 1, np.mean(data.chargingTime), sem(data.chargingTime))
     print(f"Confidence interval Waiting Time: {confidence_int_wait}")
@@ -306,4 +310,8 @@ if __name__ == '__main__':
     print(f"Number of arrivals: {data.arr}")
     print(f"Number of departures: {data.dep}")
     print(f"Number of losses: {len(data.loss)}")
+    # TODO compute the average waiting delay for k minus samples 
     plotCDF(data.loss, "", "", "test.pdf")
+    plt.figure()
+    plt.plot(data.waitingTime)
+    plt.show()
