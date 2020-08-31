@@ -12,8 +12,8 @@ from tqdm import tqdm
 C = 40  # Max battery capacity
 NBSS = 5  # Max number of chargers
 Wmax = 7  # Max waiting time for EV
-Bth = 40  # Accepted minimum charge level
-BthHighDemand = 40
+Bth = 40  # Battery capacity
+BthHighDemand = 40  # Accepted minimum charge level
 deltaHighDemand = 60
 lossesHighDemand = 2
 chargingRate = 20  # charging rate per hour
@@ -79,7 +79,7 @@ def getNextArrival(time, fixed=False):
     if fixed:
         nextArrival = 5
     else:
-        arrivalRateCoeff = [30, 30, 30, 30, 20, 15, 13, 10, 5, 8, 15, 15, 3, 4, 10, 13, 15, 15, 2, 5, 15, 18, 20, 25]  # distribution arrival rate
+        arrivalRateCoeff = [30, 30, 30, 30, 20, 15, 13, 10, 5, 8, 15, 15, 3, 4, 10, 13, 15, 15, 2, 5, 15, 18, 20, 25]  # distribution arrival rate (mean time between arrivals)
         hour = int(time / 60)  # hour index from time in minutes
         nextArrival = random.expovariate(1 / arrivalRateCoeff[hour])  # generate arrival time in minutes as function of the hour
     return nextArrival  # minutes
@@ -93,7 +93,7 @@ def arrival(time, FES, waitingLine):
         Bth = BthHighDemand
     else:
         Bth = 40
-    inter_arrival = getNextArrival(time, True)  # get inter_arrival time, True for fixed time
+    inter_arrival = getNextArrival(time, False)  # get inter_arrival time, True for fixed time
     FES.put((time + inter_arrival, "arrival", -1))  # schedule the next arrival
 
     updateBatteriesLevel(time, data.oldT)  # updated each battery level in chargers(in station) and update cost
@@ -122,11 +122,11 @@ def arrival(time, FES, waitingLine):
                     # check_add_event(FES, i)  # Check if a charger has already an event
                     FES.put((oldBatteryEV.estimateAvailable, "batteryAvailable", i))
         else:
-            data.loss.append(time)
-            data.waitingTime.append(7)
+            data.loss.append(time)  # List of time when the loss occurred
+            data.waitingTime.append(Wmax)
     else:  # loss
-        data.loss.append(time)
-        data.waitingTime.append(7)
+        data.loss.append(time)  # List of time when the loss occurred
+        data.waitingTime.append(Wmax)
 
     data.oldT = time
 
@@ -140,7 +140,7 @@ def updateBatteriesLevel(time, oldT):  # update batteries level and cost
         #     chargers.chargers[i].level = C  # when battery is fully charged
         # else:
         #     chargers.chargers[i].level = chargers.chargers[i].level + deltaCharge  # update battery level
-        if chargers.chargers[i].level != C:
+        if chargers.chargers[i].level != C:  # If battery is not charged at full capacity
             chargers.chargers[i].level = chargers.chargers[i].level + deltaCharge  # update battery level
             if Spv == 0:  # If Spv is equal to 0 it means we are using the power grid and we need to pay for that
                 for pair in listCosts:
@@ -173,15 +173,16 @@ def batteryAvailable(time, FES, waitingLine, charger):  # departure
 
 def updateEstimateAvailable(time):
     for i in range(len(chargers.chargers)):
-        chargers.chargers[i].estimateAvailable = time + (Bth - chargers.chargers[i].level) * 60 / chargingRate
-        j = 0
-        while j < len(FES.queue):
-            if FES.queue[j][1] in 'batteryAvailable' and FES.queue[j][2] == i:
-                FES.queue.pop(j)
-                break
-            else:
-                j += 1
-        FES.put((chargers.chargers[i].estimateAvailable, 'batteryAvailable', i))
+        if (Bth - chargers.chargers[i].level) != 0:  # If battery is already charged we don´t change the estimate available charge time
+            chargers.chargers[i].estimateAvailable = time + (Bth - chargers.chargers[i].level) * 60 / chargingRate
+            j = 0
+            while j < len(FES.queue):
+                if FES.queue[j][1] in 'batteryAvailable' and FES.queue[j][2] == i:
+                    FES.queue.pop(j)
+                    break
+                else:
+                    j += 1
+            FES.put((chargers.chargers[i].estimateAvailable, 'batteryAvailable', i))
         # TODO chargingRate graph depending the hour and compare it with the different seasons, daylight duration and chargingRate
     # Check waiting line (remove if necessary)
     estimatedWaitings = []
@@ -193,7 +194,7 @@ def updateEstimateAvailable(time):
         if waitingLine[i].arrival_time + Wmax <= estimatedWaitings[i]:  # If EV needs to wait more than the arrival time plus Wmax, the EV leaves and is added to losses
             waitingLine.pop(i)
             data.loss.append(time)
-            data.waitingTime.append(7)
+            data.waitingTime.append(Wmax)
         else:
             i += 1
 
@@ -203,6 +204,8 @@ def chargingRate_change(time, FES):
     updateBatteriesLevel(time, data.oldT)  # updated each battery level in chargers (in station) and update cost
     FES.put((time + 60, "chargingRate_change", -1))  # Check every hour
     hour = int(time / 60)
+    if hour % 24 == 0:  # Bug fix when there is a new day we start again at hour equals 0 not 24
+        hour = 0
     PowerDayHour = PV_production[(PV_production['Month'] == month) & (PV_production['Day'] == day) & (PV_production['Hour'] == hour)]
     OutPow = PowerDayHour.iloc[0][3]  # Retrieving output power according to day, month, and hour
     Spv = S_one_PV * PV * OutPow  # Power of a set of panels in a given day, month, and hour (Wh)
@@ -210,7 +213,7 @@ def chargingRate_change(time, FES):
         chargingRate = maxChargingRate
     else:
         chargingRate = (Spv/NBSS)/1000  # Over 1000 to convert it to kWh
-        if chargingRate > 20:  # if charging rate is more than 20 kWh limit that power
+        if chargingRate > 20:  # if charging rate is more than 20 kWh limit that power to avoid battery damage
             chargingRate = 20
     updateEstimateAvailable(time)
     data.oldT = time
@@ -258,7 +261,7 @@ def getSeason():
 def getLosses(lossses_list, time, delta):
     count = 0
     for i in lossses_list:
-        if time - delta < i < time:
+        if time - delta < i < time:  # Count the number of losses in the time span defined by the delta
             count += 1
     return count
 
@@ -278,7 +281,7 @@ def plotCDF(data, xlabel, ylabel, name):
 if __name__ == '__main__':
     random.seed(42)
     np.random.seed(42)
-    SIM_TIME = 24 * 60  # Simulation time
+    SIM_TIME = 24 * 60  # Simulation time in minutes
     time = 0
     waitingLine = []
     data = Measure()
@@ -305,11 +308,14 @@ if __name__ == '__main__':
         pbar.update(time)
     confidence_int_wait = t.interval(0.999, len(data.waitingTime) - 1, np.mean(data.waitingTime), sem(data.waitingTime))
     confidence_int_charge = t.interval(0.999, len(data.chargingTime) - 1, np.mean(data.chargingTime), sem(data.chargingTime))
+    # Loss warm-up period (hour 0-3)
+    warm_loss = np.count_nonzero(np.array(data.loss) < 180)
     print(f"Confidence interval Waiting Time: {confidence_int_wait}")
     print(f"Confidence interval Charging Time: {confidence_int_charge}")
     print(f"Number of arrivals: {data.arr}")
     print(f"Number of departures: {data.dep}")
     print(f"Number of losses: {len(data.loss)}")
+    print(f"Number of losses in the warm-up interval: {warm_loss}")
     # TODO compute the average waiting delay for k minus samples 
     plotCDF(data.loss, "", "", "test.pdf")
     plt.figure()
