@@ -58,8 +58,10 @@ class Battery:
 class Charger:
     def __init__(self, NBSS):
         self.chargers = []
+        self.working = []
         for i in range(NBSS):
             self.chargers.append(Battery(arrival_time=0, charger=i, inStation=True, Bth=Bth))
+            self.working.append(True)
 
 
 def batLevel(mean, std):  # generate random initial charge level
@@ -140,12 +142,13 @@ def updateBatteriesLevel(time, oldT):  # update batteries level and cost
         #     chargers.chargers[i].level = C  # when battery is fully charged
         # else:
         #     chargers.chargers[i].level = chargers.chargers[i].level + deltaCharge  # update battery level
-        if chargers.chargers[i].level != C:  # If battery is not charged at full capacity
-            chargers.chargers[i].level = chargers.chargers[i].level + deltaCharge  # update battery level
-            if Spv == 0:  # If Spv is equal to 0 it means we are using the power grid and we need to pay for that
-                for pair in listCosts:
-                    if (time - oldT) != 0:  # avoid zero division
-                        data.cost += ((pair[0]) / (time - oldT)) * deltaCharge * pair[1]  # adding the cost of the fraction of time according to listCosts
+        if chargers.working[i]:  # Check if chargers are working (work postponed due to high cost, daylight, and Tmax)
+            if chargers.chargers[i].level != C:  # If battery is not charged at full capacity
+                chargers.chargers[i].level = chargers.chargers[i].level + deltaCharge  # update battery level
+                if Spv == 0:  # If Spv is equal to 0 it means we are using the power grid and we need to pay for that
+                    for pair in listCosts:
+                        if (time - oldT) != 0:  # avoid zero division
+                            data.cost += ((pair[0]) / (time - oldT)) * deltaCharge * pair[1]  # adding the cost of the fraction of time according to listCosts
 
 
 def batteryAvailable(time, FES, waitingLine, charger):  # departure
@@ -173,21 +176,23 @@ def batteryAvailable(time, FES, waitingLine, charger):  # departure
 
 def updateEstimateAvailable(time):
     for i in range(len(chargers.chargers)):
-        if (Bth - chargers.chargers[i].level) != 0:  # If battery is already charged we don´t change the estimate available charge time
-            chargers.chargers[i].estimateAvailable = time + (Bth - chargers.chargers[i].level) * 60 / chargingRate
-            j = 0
-            while j < len(FES.queue):
-                if FES.queue[j][1] in 'batteryAvailable' and FES.queue[j][2] == i:
-                    FES.queue.pop(j)
-                    break
-                else:
-                    j += 1
-            FES.put((chargers.chargers[i].estimateAvailable, 'batteryAvailable', i))
-        # TODO chargingRate graph depending the hour and compare it with the different seasons, daylight duration and chargingRate
+        if chargers.working[i]:
+            if (Bth - chargers.chargers[i].level) != 0:  # If battery is already charged we don´t change the estimate available charge time
+                chargers.chargers[i].estimateAvailable = time + (Bth - chargers.chargers[i].level) * 60 / chargingRate
+                j = 0
+                while j < len(FES.queue):
+                    if FES.queue[j][1] in 'batteryAvailable' and FES.queue[j][2] == i:
+                        FES.queue.pop(j)
+                        break
+                    else:
+                        j += 1
+                FES.put((chargers.chargers[i].estimateAvailable, 'batteryAvailable', i))
+            # TODO chargingRate graph depending the hour and compare it with the different seasons, daylight duration and chargingRate
     # Check waiting line (remove if necessary)
     estimatedWaitings = []
     for i in range(len(chargers.chargers)):
-        estimatedWaitings.append(chargers.chargers[i].estimateAvailable)
+        if chargers.working[i]:
+            estimatedWaitings.append(chargers.chargers[i].estimateAvailable)
     estimatedWaitings = np.sort(estimatedWaitings)
     i = 0
     while i < len(waitingLine):
@@ -211,6 +216,7 @@ def chargingRate_change(time, FES):
     Spv = S_one_PV * PV * OutPow  # Power of a set of panels in a given day, month, and hour (Wh)
     if Spv == 0:  # If solar panels are not producing energy (night hours)
         chargingRate = maxChargingRate
+        # if checkHighCost(hour)
     else:
         chargingRate = (Spv/NBSS)/1000  # Over 1000 to convert it to kWh
         if chargingRate > 20:  # if charging rate is more than 20 kWh limit that power to avoid battery damage
