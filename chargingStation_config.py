@@ -349,76 +349,79 @@ if __name__ == '__main__':
     Spv = 0  # Nominal Cap. of the set of PV (kW), as we start at midnight the nom. cap. will always be 0
     Tmax = 60  # maximum time by which the charge process can be postponed (in minutes)
     f = 0.4  # postpone the charging of a fraction of batteries f
-    for key in config.keys():
-        PV = config[key]['PV']
-        f_vector = np.linspace(config[key]['f']['start'], config[key]['f']['finish'], config[key]['f']['samples'])
-        Tmax_vector = np.linspace(config[key]['Tmax']['start'], config[key]['Tmax']['finish'], config[key]['Tmax']['samples'])
-        for Tmax in Tmax_vector:
-            print(f"{key}_{Tmax}")
-            config[key]['Tmax'][f'Time_{Tmax}'] = []
-            config[key]['Tmax'][f'LossProb_{Tmax}'] = []
-            config[key]['Tmax'][f'Cost_{Tmax}'] = []
-            config[key]['Tmax'][f'Working_{Tmax}'] = []
-            time = 0
-            waitingLine = []
-            data = Measure()
-            # FES = PriorityQueue()  # list of events
-            FES = PriorityQueue_implemented()
-            FES.put((0, "arrival", -1))  # schedule first arrival at t=0
-            FES.put((60, "chargingRate_change", -1))
-            chargers = Charger(NBSS)
-            while time < SIM_TIME:
-                (time, event_type, charger) = FES.get()
-                if time < data.oldT:
-                    print('Time travel')
-                if event_type == "arrival":
-                    arrival(time, FES, waitingLine)
+    for seed in range(50):
+        random.seed(seed)
+        np.random.seed(seed)
+        for key in config.keys():
+            PV = config[key]['PV']
+            f_vector = np.linspace(config[key]['f']['start'], config[key]['f']['finish'], config[key]['f']['samples'])
+            Tmax_vector = np.linspace(config[key]['Tmax']['start'], config[key]['Tmax']['finish'], config[key]['Tmax']['samples'])
+            for Tmax in Tmax_vector:
+                print(f"{key}_{Tmax}_{seed}")
+                config[key]['Tmax'][f'Time_{Tmax}_{seed}'] = []
+                config[key]['Tmax'][f'LossProb_{Tmax}_{seed}'] = []
+                config[key]['Tmax'][f'Cost_{Tmax}_{seed}'] = []
+                config[key]['Tmax'][f'Working_{Tmax}_{seed}'] = []
+                time = 0
+                waitingLine = []
+                data = Measure()
+                # FES = PriorityQueue()  # list of events
+                FES = PriorityQueue_implemented()
+                FES.put((0, "arrival", -1))  # schedule first arrival at t=0
+                FES.put((60, "chargingRate_change", -1))
+                chargers = Charger(NBSS)
+                while time < SIM_TIME:
+                    (time, event_type, charger) = FES.get()
+                    if time < data.oldT:
+                        print('Time travel')
+                    if event_type == "arrival":
+                        arrival(time, FES, waitingLine)
 
-                elif event_type == "batteryAvailable":
-                    batteryAvailable(time, FES, waitingLine, charger)
+                    elif event_type == "batteryAvailable":
+                        batteryAvailable(time, FES, waitingLine, charger)
 
-                elif event_type == "chargingRate_change":
-                    chargingRate_change(time, FES)
+                    elif event_type == "chargingRate_change":
+                        chargingRate_change(time, FES)
 
-                elif event_type == "reconnectBatteries":
-                    reconnectBatteries(time, FES)
-                config[key]['Tmax'][f'Time_{Tmax}'].append(time)
-                config[key]['Tmax'][f'LossProb_{Tmax}'].append(len(data.loss) / data.arr)
-                config[key]['Tmax'][f'Cost_{Tmax}'].append(data.cost)
-                config[key]['Tmax'][f'Working_{Tmax}'].append([charger.working for charger in chargers.chargers].count(True))
-        for f in f_vector:
-            print(f"{key}_{f}")
-            config[key]['f'][f'Time_{f}'] = []
-            config[key]['f'][f'LossProb_{f}'] = []
-            config[key]['f'][f'Cost_{f}'] = []
-            config[key]['f'][f'Working_{f}'] = []
-            time = 0
-            waitingLine = []
-            data = Measure()
-            # FES = PriorityQueue()  # list of events
-            FES = PriorityQueue_implemented()
-            FES.put((0, "arrival", -1))  # schedule first arrival at t=0
-            FES.put((60, "chargingRate_change", -1))
-            chargers = Charger(NBSS)
-            while time < SIM_TIME:
-                (time, event_type, charger) = FES.get()
-                if time < data.oldT:
-                    print('Time travel')
-                if event_type == "arrival":
-                    arrival(time, FES, waitingLine)
+                    elif event_type == "reconnectBatteries":
+                        reconnectBatteries(time, FES)
+                    config[key]['Tmax'][f'Time_{Tmax}_{seed}'].append(time)
+                    config[key]['Tmax'][f'LossProb_{Tmax}_{seed}'].append(len(data.loss) / data.arr)
+                    config[key]['Tmax'][f'Cost_{Tmax}_{seed}'].append(data.cost)
+                    config[key]['Tmax'][f'Working_{Tmax}_{seed}'].append([charger.working for charger in chargers.chargers].count(True))
+            for f in f_vector:
+                print(f"{key}_{f}_{seed}")
+                config[key]['f'][f'Time_{f}_{seed}'] = []
+                config[key]['f'][f'LossProb_{f}_{seed}'] = []
+                config[key]['f'][f'Cost_{f}_{seed}'] = []
+                config[key]['f'][f'Working_{f}_{seed}'] = []
+                time = 0
+                waitingLine = []
+                data = Measure()
+                # FES = PriorityQueue()  # list of events
+                FES = PriorityQueue_implemented()
+                FES.put((0, "arrival", -1))  # schedule first arrival at t=0
+                FES.put((60, "chargingRate_change", -1))
+                chargers = Charger(NBSS)
+                while time < SIM_TIME:
+                    (time, event_type, charger) = FES.get()
+                    if time < data.oldT:
+                        print('Time travel')
+                    if event_type == "arrival":
+                        arrival(time, FES, waitingLine)
 
-                elif event_type == "batteryAvailable":
-                    batteryAvailable(time, FES, waitingLine, charger)
+                    elif event_type == "batteryAvailable":
+                        batteryAvailable(time, FES, waitingLine, charger)
 
-                elif event_type == "chargingRate_change":
-                    chargingRate_change(time, FES)
+                    elif event_type == "chargingRate_change":
+                        chargingRate_change(time, FES)
 
-                elif event_type == "reconnectBatteries":
-                    reconnectBatteries(time, FES)
-                config[key]['f'][f'Time_{f}'].append(time)
-                config[key]['f'][f'LossProb_{f}'].append(len(data.loss) / data.arr)
-                config[key]['f'][f'Cost_{f}'].append(data.cost)
-                config[key]['f'][f'Working_{f}'].append([charger.working for charger in chargers.chargers].count(True))
+                    elif event_type == "reconnectBatteries":
+                        reconnectBatteries(time, FES)
+                    config[key]['f'][f'Time_{f}_{seed}'].append(time)
+                    config[key]['f'][f'LossProb_{f}_{seed}'].append(len(data.loss) / data.arr)
+                    config[key]['f'][f'Cost_{f}_{seed}'].append(data.cost)
+                    config[key]['f'][f'Working_{f}_{seed}'].append([charger.working for charger in chargers.chargers].count(True))
     json_data = json.dumps(config, indent=4)
     with open('data.json', 'w') as outfile:
         outfile.write(json_data)
