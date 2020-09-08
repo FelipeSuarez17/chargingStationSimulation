@@ -1,0 +1,28 @@
+{
+  "without_PV":{
+    "PV": 0,
+    "f":{
+      "start": 0,
+      "finish": 1,
+      "samples": 11
+    },
+    "Tmax": {
+      "start": 60,
+      "finish": 240,
+      "samples": 4
+    }
+  },
+  "with_PV": {
+    "PV": 10,
+    "f":{
+      "start": 0,
+      "finish": 1,
+      "samples": 11
+    },
+    "Tmax": {
+      "start": 60,
+      "finish": 240,
+      "samples": 4
+    }
+  }
+}
