@@ -1,10 +1,18 @@
 {
   "without_PV":{
     "PV": 0,
+    "winter": {
+      "day": 1,
+      "month": 1
+    },
+    "summer": {
+      "day": 26,
+      "month": 6
+    },
     "f":{
       "start": 0,
       "finish": 1,
-      "samples": 11
+      "samples": 6
     },
     "Tmax": {
       "start": 60,
@@ -14,10 +22,18 @@
   },
   "with_PV": {
     "PV": 10,
+    "winter": {
+      "day": 1,
+      "month": 1
+    },
+    "summer": {
+      "day": 26,
+      "month": 6
+    },
     "f":{
       "start": 0,
       "finish": 1,
-      "samples": 11
+      "samples": 6
     },
     "Tmax": {
       "start": 60,

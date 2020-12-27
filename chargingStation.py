@@ -22,11 +22,12 @@ PV = 0  # Number of Photovoltaic Panels
 S_one_PV = 1  # Nominal Cap. of one PV (1kWp)
 prices = pd.read_csv('Data/electricity_prices.csv')  # Prices dataframe
 PV_production = pd.read_csv('Data/PVproduction_PanelSize1kWp.csv')  # Output PV power dataframe
-day = 15
-month = 11
+day = 1
+month = 1
 Spv = 0  # Nominal Cap. of the set of PV (kW), as we start at midnight the nom. cap. will always be 0
 Tmax = 60  # maximum time by which the charge process can be postponed (in minutes)
 f = 0.8  # postpone the charging of a fraction of batteries f
+
 
 class Measure:
     def __init__(self):
@@ -41,6 +42,7 @@ class Measure:
         self.timelossProb = []
         self.chargingTime = []
         self.timeCost = []
+
 
 class PriorityQueue_implemented:
     def __init__(self):
@@ -58,6 +60,7 @@ class PriorityQueue_implemented:
             event_name = [item[1] if item[0] == time_event[index_next_event] else 'z' for item in self.queue]
             index_next_event = np.argmin(event_name)
             return self.queue.pop(index_next_event)
+
 
 class Battery:
     def __init__(self, arrival_time, charger, Bth=40, inStation=False):
@@ -140,7 +143,7 @@ def arrival(time, FES, waitingLine):
                     oldBatteryEV.charger = i
                     oldBatteryEV.working = True
                     data.waitingTime.append(0)  # The car does not wait for the charged battery
-                    data.chargingTime.append(time-chargers.chargers[i].arrival_time)  # Compute charging battery time
+                    data.chargingTime.append(time - chargers.chargers[i].arrival_time)  # Compute charging battery time
                     oldBatteryEV.estimateAvailable = time + (Bth - oldBatteryEV.level) * 60 / chargingRate
                     chargers.chargers[i] = oldBatteryEV  # replace battery in charger
                     # check_add_event(FES, i)  # Check if a charger has already an event
@@ -187,8 +190,8 @@ def batteryAvailable(time, FES, waitingLine, charger):  # departure
     if len(waitingLine) != 0:
         data.dep += 1
         oldBatteryEV = waitingLine.pop(0)  # take battery from car
-        data.waitingTime.append(time-oldBatteryEV.arrival_time)  # To estimate the individual waiting time
-        data.chargingTime.append(time-chargers.chargers[charger].arrival_time)  # To estimate the charging battery time
+        data.waitingTime.append(time - oldBatteryEV.arrival_time)  # To estimate the individual waiting time
+        data.chargingTime.append(time - chargers.chargers[charger].arrival_time)  # To estimate the charging battery time
         # newBatteryEV = chargers.chargers[i]
         oldBatteryEV.charger = charger
         oldBatteryEV.working = True
@@ -244,9 +247,9 @@ def chargingRate_change(time, FES):
         if checkHighCost(hour):  # Checking if there is a high cost to postpone battery charging (numeral 3 lab)
             workingBatteries = [battery.working for battery in chargers.chargers]  # Creating a list if battery is working or not
             if all(workingBatteries):  # This is the first time (all arguments in True) we are going to change working batteries for not working batteries
-                fracBatteries = np.floor(f*NBSS)  # Fraction of batteries that will NOT be used in the postponed time
+                fracBatteries = np.floor(f * NBSS)  # Fraction of batteries that will NOT be used in the postponed time
                 batteryLevel = [battery.level for battery in chargers.chargers]
-                FES.put((time+Tmax, 'reconnectBatteries', -1))  # Event to reconnect batteries
+                FES.put((time + Tmax, 'reconnectBatteries', -1))  # Event to reconnect batteries
                 for i in range(int(fracBatteries)):  # Disconnect batteries (no additional cost added)
                     index = np.argmin(batteryLevel)
                     batteryLevel[index] = C + 1
@@ -259,18 +262,19 @@ def chargingRate_change(time, FES):
                                 break
                             else:
                                 j += 1
-                while NBSS-fracBatteries < len(waitingLine):  # If more customers are waiting and we have removed more batteries we have to take out the customers due to lack of batteries
+                while NBSS - fracBatteries < len(waitingLine):  # If more customers are waiting and we have removed more batteries we have to take out the customers due to lack of batteries
                     waitingLine.pop()
                     data.loss.append(time)
         else:  # There is no high cost so I reconnect the batteries
             reconnectBatteries(time, FES)
     else:
         reconnectBatteries(time, FES)  # Making sure that every battery charger is connected because there is sunlight
-        chargingRate = (Spv/NBSS)/1000  # Over 1000 to convert it to kWh
+        chargingRate = (Spv / NBSS) / 1000  # Over 1000 to convert it to kWh
         if chargingRate > 20:  # if charging rate is more than 20 kWh limit that power to avoid battery damage
             chargingRate = 20
     updateEstimateAvailable(time)
     data.oldT = time
+
 
 def reconnectBatteries(time, FES):
     # Making sure that no other reconnect battery event is scheduled
@@ -298,6 +302,7 @@ def checkHighCost(hour):  # Checking if there is a high cost to postpone battery
         return True
     else:
         return False
+
 
 def getCosts(time, oldT):  # return eur/kWh
     cost = []
@@ -378,7 +383,7 @@ if __name__ == '__main__':
             reconnectBatteries(time, FES)
         listTime.append(time)
         listChargingRate.append(chargingRate)
-        data.lossProb.append(len(data.loss)/data.arr)
+        data.lossProb.append(len(data.loss) / data.arr)
         data.timelossProb.append(time)
         data.timeCost.append(data.cost)
         pbar.update(time)
